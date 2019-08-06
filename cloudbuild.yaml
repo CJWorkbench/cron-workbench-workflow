@@ -1,8 +1,0 @@
-# See https://cloud.google.com/cloud-build/docs/build-debug-locally for debug
-# instructions.
-timeout: 10
-steps:
-# Build new Docker images
-- name: 'gcr.io/cloud-builders/docker'
-  args: [ "build", "--tag", "gcr.io/$PROJECT_ID/cron-workbench-workflow:$COMMIT_SHA", "." ]
-images: "gcr.io/$PROJECT_ID/cron-workbench-workflow:$COMMIT_SHA"
