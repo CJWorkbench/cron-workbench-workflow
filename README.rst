@@ -8,7 +8,7 @@ Connects to the Workbench Postgres database to gather information, then feeds it
 Usage
 -----
 
-``docker run -it --rm $(docker build -q .)``
+``docker run -it --rm --env [ENV VARS] $(docker build -q .)``
 
 Environment variables
 ---------------------
