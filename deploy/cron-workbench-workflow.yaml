@@ -1,0 +1,41 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: cron-workbench-workflow
+spec:
+  schedule: "@hourly"
+  concurrencyPolicy: "Forbid"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: cron-workbench-workflow
+              # call `deploy/deploy-latest` to change this on production
+              image: gcr.io/cj-workbench/cron-workbench-workflow:c4335d5752a3caf1712b651e148287c27e77fe4e
+              env:
+              - name: DATABASE_HOST
+                value: database-service
+              - name: DATABASE_USER
+                value: cjworkbench
+              - name: DATABASE_PASSWORD
+                value: cjworkbench
+              - name: DATABASE_NAME
+                value: cjworkbench
+              - name: WORKFLOW_ID
+                value: "28501"
+              - name: WORKFLOWS_STEP_ID
+                value: "step-Ne_1Zf2yM9Qb"
+              - name: STEPS_STEP_ID
+                value: "step-8a-U8WJocIjS"
+              - name: WORKFLOWS_API_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: cron-workbench-workflow-secrets
+                    key: WORKFLOWS_API_TOKEN
+              - name: STEPS_API_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: cron-workbench-workflow-secrets
+                    key: STEPS_API_TOKEN
