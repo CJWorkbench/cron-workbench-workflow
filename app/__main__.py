@@ -86,7 +86,7 @@ def regenerate_steps_csv(cursor):
                 step.module_id_name AS module,
                 step.fetch_error,
                 step.last_relevant_delta_id = step.cached_render_result_delta_id AS is_rendered,
-                step.cached_render_result_error AS render_error,
+                step.cached_render_result_errors::TEXT AS render_error,
                 step.is_busy,
                 step.notifications AS has_notifications,
                 CASE step.auto_update_data
