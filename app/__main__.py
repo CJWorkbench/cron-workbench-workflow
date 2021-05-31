@@ -5,6 +5,7 @@ import logging
 import io
 import os
 import sys
+import time
 
 import pg8000
 import httpx
@@ -174,14 +175,28 @@ def upload(
     uploader.upload()
 
 
+def connect_with_retry():
+    retries = 5
+    while retries > 0:
+        try:
+            logger.info("Connecting to database at %s", DatabaseHost)
+            return pg8000.connect(
+                user=DatabaseUser,
+                host=DatabaseHost,
+                database=DatabaseName,
+                password=DatabasePassword,
+            )  # context manager
+        except pg8000.InterfaceError as err:
+            retries -= 1
+            if retries > 0:
+                logger.info("Failed connection: %s; will retry in 2s", str(err))
+                time.sleep(2)
+            else:
+                raise
+
+
 def main():
-    logger.info("Connecting to database at %s", DatabaseHost)
-    with pg8000.connect(
-        user=DatabaseUser,
-        host=DatabaseHost,
-        database=DatabaseName,
-        password=DatabasePassword,
-    ) as conn:  # or raise
+    with connect_with_retry() as conn:  # or raise
         logger.info("Getting cursor")
         with conn.cursor() as cursor:
             regenerate_steps_csv(cursor)
