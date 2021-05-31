@@ -1,34 +1,33 @@
 #!/usr/bin/env python3
 
 import datetime
+import logging
 import io
 import os
 import sys
-import boto3
-import botocore
+
 import pg8000
-import requests
+import httpx
+import tusclient.uploader
 
 
-UrlBase = "https://app.workbenchdata.com/api/v1"
-# Load other constants from environment variables
+logger = logging.getLogger(__name__)
+
+
 try:
-    WorkflowId = os.environ["WORKFLOW_ID"]
-    WorkflowsStepId = os.environ["WORKFLOWS_STEP_ID"]
+    WorkflowsUrl = os.environ["WORKFLOWS_URL"]
     WorkflowsApiToken = os.environ["WORKFLOWS_API_TOKEN"]
-    StepsStepId = os.environ["STEPS_STEP_ID"]
+    StepsUrl = os.environ["STEPS_URL"]
     StepsApiToken = os.environ["STEPS_API_TOKEN"]
+    UsersUrl = os.environ["USERS_URL"]
+    UsersApiToken = os.environ["USERS_API_TOKEN"]
     DatabaseHost = os.environ["DATABASE_HOST"]
     DatabaseName = os.environ["DATABASE_NAME"]
     DatabaseUser = os.environ["DATABASE_USER"]
     DatabasePassword = os.environ["DATABASE_PASSWORD"]
 except KeyError as err:
-    print("Error: required %s environment variable" % err.args[0], file=sys.stderr)
+    logger.error("Error: required %s environment variable", err.args[0])
     sys.exit(1)
-
-
-def upload_api_url(step_id: str) -> str:
-    return f"{UrlBase}/workflows/{WorkflowId}/steps/{step_id}/uploads"
 
 
 def query_csv(cursor, sql: str) -> io.BytesIO:
@@ -39,8 +38,9 @@ def query_csv(cursor, sql: str) -> io.BytesIO:
     """
     retval = io.BytesIO()
     cursor.execute(sql, stream=retval)
+    n_bytes = retval.tell()
     retval.seek(0)
-    return retval
+    return retval, n_bytes
 
 
 def generate_csv_filename(basename: str) -> str:
@@ -48,43 +48,20 @@ def generate_csv_filename(basename: str) -> str:
     return f"{basename}-{timestamp}.csv"
 
 
-def regenerate_workflows_csv(cursor):
-    fileobj = query_csv(
-        cursor,
-        """
-        COPY (
-            SELECT
-                id AS workflow_id,
-                (
-                    SELECT auth_user.email
-                    FROM auth_user
-                    WHERE auth_user.id = server_workflow.owner_id
-                ) AS owner_email,
-                anonymous_owner_session_key,
-                last_viewed_at,
-                creation_date AS created_at,
-                lesson_slug
-            FROM server_workflow
-            ORDER BY id
-        ) TO STDOUT WITH CSV HEADER
-        """,
-    )
-    filename = generate_csv_filename("workflows")
-    upload(fileobj, filename, WorkflowsStepId, WorkflowsApiToken)
-
-
 def regenerate_steps_csv(cursor):
-    fileobj = query_csv(
+    logger.info("Querying Steps")
+    fileobj, n_bytes = query_csv(
         cursor,
         """
         COPY (
             SELECT
+                step.id AS step_id,
                 tab.workflow_id,
                 tab.position + 1 AS tab_number,
                 tab.name AS tab_name,
                 step."order" + 1 AS step_position,
                 step.module_id_name AS module,
-                step.fetch_error,
+                step.fetch_errors,
                 step.last_relevant_delta_id = step.cached_render_result_delta_id AS is_rendered,
                 step.cached_render_result_errors::TEXT AS render_error,
                 step.is_busy,
@@ -94,10 +71,9 @@ def regenerate_steps_csv(cursor):
                     ELSE NULL
                 END AS autofetch_every_n_seconds,
                 step.is_collapsed,
-                step.id AS step_id,
                 step.slug
-            FROM server_wfmodule step
-            INNER JOIN server_tab tab ON step.tab_id = tab.id
+            FROM step
+            INNER JOIN tab ON step.tab_id = tab.id
             WHERE
                 NOT step.is_deleted
                 AND NOT tab.is_deleted
@@ -106,50 +82,113 @@ def regenerate_steps_csv(cursor):
         """,
     )
     filename = generate_csv_filename("steps")
-    upload(fileobj, filename, StepsStepId, StepsApiToken)
+    upload(fileobj, filename, n_bytes=n_bytes, url=StepsUrl, api_token=StepsApiToken)
 
 
-def upload(fileobj: io.BytesIO, filename: str, step_id: str, api_token: str):
+def regenerate_users_csv(cursor):
+    logger.info("Querying Users")
+    fileobj, n_bytes = query_csv(
+        cursor,
+        """
+        COPY (
+            SELECT
+                auth_user.id AS user_id,
+                auth_user.email,
+                TO_CHAR(auth_user.last_login, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS last_logged_in_at,
+                auth_user.username,
+                auth_user.first_name,
+                auth_user.last_name,
+                TO_CHAR(auth_user.date_joined, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
+                auth_user.is_active,
+                user_profile.get_newsletter,
+                user_profile.locale_id,
+                user_profile.stripe_customer_id,
+                TO_CHAR(MAX(subscription.renewed_at), 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS last_subscription
+            FROM auth_user
+            LEFT JOIN cjworkbench_userprofile user_profile ON auth_user.id = user_profile.user_id
+            LEFT JOIN subscription ON auth_user.id = subscription.user_id
+            GROUP BY
+                auth_user.id,
+                auth_user.email,
+                auth_user.last_login,
+                auth_user.username,
+                auth_user.first_name,
+                auth_user.last_name,
+                auth_user.date_joined,
+                auth_user.is_active,
+                user_profile.get_newsletter,
+                user_profile.locale_id,
+                user_profile.stripe_customer_id
+            ORDER BY auth_user.id
+        ) TO STDOUT WITH CSV HEADER
+        """,
+    )
+    filename = generate_csv_filename("steps")
+    upload(fileobj, filename, n_bytes=n_bytes, url=UsersUrl, api_token=UsersApiToken)
+
+
+def regenerate_workflows_csv(cursor):
+    logger.info("Querying Workflows")
+    fileobj, n_bytes = query_csv(
+        cursor,
+        """
+        COPY (
+            SELECT
+                id AS workflow_id,
+                owner_id AS user_id,
+                anonymous_owner_session_key,
+                TO_CHAR(last_viewed_at, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS last_viewed_at,
+                TO_CHAR(creation_date, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
+                lesson_slug
+            FROM workflow
+            ORDER BY id
+        ) TO STDOUT WITH CSV HEADER
+        """,
+    )
+    filename = generate_csv_filename("workflows")
+    upload(
+        fileobj,
+        filename,
+        n_bytes=n_bytes,
+        url=WorkflowsUrl,
+        api_token=WorkflowsApiToken,
+    )
+
+
+def upload(
+    fileobj: io.BytesIO, filename: str, n_bytes: int, url: str, api_token: str
+) -> None:
     # 1. Authorize upload to S3
-    credentials_url = upload_api_url(step_id)
-    credentials_response = requests.post(
-        credentials_url, headers={"Authorization": f"Bearer {api_token}"}
+    credentials_response = httpx.post(
+        url,
+        headers={"Authorization": f"Bearer {api_token}"},
+        json={"filename": filename, "size": n_bytes},
     )
     credentials_response.raise_for_status()  # expect 200 OK
-    s3_config = credentials_response.json()
+    tus_upload_url = credentials_response.json()["tusUploadUrl"]
 
-    # 2. Upload to S3
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=s3_config["credentials"]["accessKeyId"],
-        aws_secret_access_key=s3_config["credentials"]["secretAccessKey"],
-        aws_session_token=s3_config["credentials"]["sessionToken"],
-        region_name=s3_config["region"],
-        endpoint_url=s3_config["endpoint"],
-        config=botocore.client.Config(s3={"addressing_style": "path"}),
+    # 2. TUS-upload
+    uploader = tusclient.uploader.Uploader(
+        file_stream=fileobj, url=tus_upload_url, retries=2
     )
-    s3_client.upload_fileobj(fileobj, s3_config["bucket"], s3_config["key"])
-
-    # 3. Tell Workbench about the upload
-    finish_response = requests.post(
-        s3_config["finishUrl"],
-        headers={"Authorization": f"Bearer {api_token}"},
-        json={"filename": filename},
-    )
-    finish_response.raise_for_status()  # expect 200 OK
+    uploader.upload()
 
 
 def main():
+    logger.info("Connecting to database at %s", DatabaseHost)
     with pg8000.connect(
         user=DatabaseUser,
         host=DatabaseHost,
         database=DatabaseName,
         password=DatabasePassword,
     ) as conn:  # or raise
+        logger.info("Getting cursor")
         with conn.cursor() as cursor:
-            regenerate_workflows_csv(cursor)
             regenerate_steps_csv(cursor)
+            regenerate_workflows_csv(cursor)
+            regenerate_users_csv(cursor)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
     main()

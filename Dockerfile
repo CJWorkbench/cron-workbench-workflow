@@ -1,10 +1,8 @@
-FROM alpine:3.10.1
+FROM alpine:3.13.5
 
-RUN true \
-      && apk add python3 \
-      && rm -rf /var/cache/apk/* \
-      && pip3 install pg8000 boto3 requests \
-      && rm -rf /root/.cache/pip
+RUN apk add --no-cache python3 py3-pip
+
+RUN python3 -mpip install --no-cache-dir httpx pg8000 tuspy
 
 COPY app/ /app/app
 

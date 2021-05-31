@@ -17,8 +17,9 @@ Environment variables
 - ``DATABASE_USER``: Postgres server username
 - ``DATABASE_NAME``: Postgres database name
 - ``DATABASE_PASSWORD``: Postgres database password
-- ``WORKFLOW_ID``: Workflow where our results will go.
-- ``WORKFLOWS_STEP_ID``: the Upload Step where we will send the Workflows CSV.
-- ``WORKFLOWS_API_TOKEN``: the upload-API token for ``WORKFLOWS_STEP_ID``. Keep it secret!
-- ``STEPS_STEP_ID``: the Upload Step where we will send the Steps CSV.
-- ``WORKFLOWS_API_TOKEN``: the upload-API token for ``STEPS_STEP_ID``. Keep it secret!
+- ``STEPS_URL``: URL of the Upload Step where we will send the Steps CSV.
+- ``STEPS_API_TOKEN``: the upload-step API token for ``STEPS_URL``. Keep it secret!
+- ``USERS_URL``: the Upload Step where we will send the Workflows CSV.
+- ``USERS_API_TOKEN``: the upload-step API token for ``USERS_URL``. Keep it secret!
+- ``WORKFLOWS_URL``: the Upload Step where we will send the Workflows CSV.
+- ``WORKFLOWS_API_TOKEN``: the upload-step API token for ``WORKFLOWS_URL``. Keep it secret!
