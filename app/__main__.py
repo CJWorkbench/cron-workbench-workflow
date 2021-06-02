@@ -32,8 +32,7 @@ except KeyError as err:
 
 
 def query_csv(cursor, sql: str) -> io.BytesIO:
-    """
-    Execute an SQL COPY TO STDOUT query and return the result as a CSV fileobj.
+    """Run an SQL COPY TO STDOUT query and return the result as a CSV fileobj.
 
     Remember: in CSV, there's no NULL. The output will be an empty string.
     """
@@ -108,6 +107,7 @@ def regenerate_users_csv(cursor):
             FROM auth_user
             LEFT JOIN cjworkbench_userprofile user_profile ON auth_user.id = user_profile.user_id
             LEFT JOIN subscription ON auth_user.id = subscription.user_id
+            WHERE auth_user.id IN (SELECT user_id FROM account_emailaddress WHERE verified)
             GROUP BY
                 auth_user.id,
                 auth_user.email,
