@@ -94,6 +94,7 @@ def regenerate_users_csv(cursor):
             SELECT
                 auth_user.id AS user_id,
                 auth_user.email,
+                CASE WHEN auth_user.password LIKE '!%' THEN 0 ELSE 1 END AS has_password,
                 TO_CHAR(auth_user.last_login, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS last_logged_in_at,
                 auth_user.username,
                 auth_user.first_name,
@@ -124,7 +125,7 @@ def regenerate_users_csv(cursor):
         ) TO STDOUT WITH CSV HEADER
         """,
     )
-    filename = generate_csv_filename("steps")
+    filename = generate_csv_filename("users")
     upload(fileobj, filename, n_bytes=n_bytes, url=UsersUrl, api_token=UsersApiToken)
 
 
