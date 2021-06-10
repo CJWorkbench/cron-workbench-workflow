@@ -23,3 +23,9 @@ Environment variables
 - ``USERS_API_TOKEN``: the upload-step API token for ``USERS_URL``. Keep it secret!
 - ``WORKFLOWS_URL``: the Upload Step where we will send the Workflows CSV.
 - ``WORKFLOWS_API_TOKEN``: the upload-step API token for ``WORKFLOWS_URL``. Keep it secret!
+
+Deployment
+----------
+
+1. ``git push``. Google Cloud Build will build a new image with this SHA1.
+2. Edit the ``cron-workbench-workflow`` Kubernetes cronjob to use the SHA1.
