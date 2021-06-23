@@ -139,6 +139,7 @@ def regenerate_workflows_csv(cursor):
                 id AS workflow_id,
                 owner_id AS user_id,
                 anonymous_owner_session_key,
+                fetches_per_day,
                 TO_CHAR(last_viewed_at, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS last_viewed_at,
                 TO_CHAR(creation_date, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
                 lesson_slug
